@@ -123,7 +123,7 @@ export const ARCHETYPE_INFO: Record<
   { oneLiner: string; emoji: string }
 > = {
   Legendary: {
-    oneLiner: 'You're the unicorn recruiters dream about.',
+    oneLiner: "You're the unicorn recruiters dream about.",
     emoji: '🦄',
   },
   'Project Demon': {
