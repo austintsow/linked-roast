@@ -1,103 +1,205 @@
-import Image from "next/image";
+'use client';
+
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { Flame, Loader2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { FileDrop } from '@/components/FileDrop';
+import { PasteArea } from '@/components/PasteArea';
+import { PersonaPicker } from '@/components/PersonaPicker';
+import { HeatPicker } from '@/components/HeatPicker';
+import { Persona, Heat } from '@/lib/types';
+
+const SAMPLE_PROFILE = `Senior Product Manager
+Passionate team player with 5+ years of experience in product management. Strategic thinker who leverages synergies to drive innovation and disrupt markets. Visionary leader focused on best practices and moving the needle.
+
+Experience:
+Product Manager at Tech Company
+• Responsible for product roadmap
+• Worked with cross-functional teams
+• Managed multiple projects
+• Collaborated with stakeholders
+
+Skills: Leadership, Strategic Planning, Innovation, Agile, Scrum, Project Management, Team Building`;
 
 export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const router = useRouter();
+  const [mode, setMode] = useState<'upload' | 'paste'>('upload');
+  const [file, setFile] = useState<File | null>(null);
+  const [pastedText, setPastedText] = useState('');
+  const [persona, setPersona] = useState<Persona>('mean_girl');
+  const [heat, setHeat] = useState<Heat>('medium');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  const handleTrySample = async () => {
+    setPastedText(SAMPLE_PROFILE);
+    setMode('paste');
+    
+    // Automatically trigger roast with sample
+    setTimeout(() => {
+      handleSubmit(SAMPLE_PROFILE);
+    }, 100);
+  };
+
+  const handleSubmit = async (textOverride?: string) => {
+    setError('');
+    setIsLoading(true);
+
+    try {
+      let rawText = textOverride || pastedText;
+
+      // If file mode, extract text first
+      if (mode === 'upload' && file && !textOverride) {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const extractRes = await fetch('/api/extract', {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!extractRes.ok) {
+          const errorData = await extractRes.json();
+          throw new Error(errorData.error || 'Failed to extract text from PDF');
+        }
+
+        const extractData = await extractRes.json();
+        rawText = extractData.rawText;
+      }
+
+      if (!rawText || rawText.length < 50) {
+        throw new Error('Please provide at least 50 characters of profile text');
+      }
+
+      // Call roast API
+      const roastRes = await fetch('/api/roast', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rawText, persona, heat }),
+      });
+
+      if (!roastRes.ok) {
+        const errorData = await roastRes.json();
+        throw new Error(errorData.error || 'Failed to generate roast');
+      }
+
+      const roastData = await roastRes.json();
+
+      // Navigate to results with state
+      const state = {
+        roast_lines: roastData.roast_lines,
+        score: roastData.score,
+        tags: roastData.tags,
+        archetype: roastData.archetype,
+        rawText,
+        persona,
+        heat,
+      };
+
+      sessionStorage.setItem('roastResult', JSON.stringify(state));
+      router.push('/result');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const canSubmit = mode === 'upload' ? file !== null : pastedText.length >= 50;
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4 md:p-8">
+      <div className="max-w-6xl mx-auto">
+        {/* Header */}
+        <div className="text-center mb-8">
+          <div className="flex items-center justify-center gap-3 mb-4">
+            <Flame className="h-12 w-12 text-orange-500" />
+            <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-orange-500 to-pink-500 text-transparent bg-clip-text">
+              linkedRoast
+            </h1>
+          </div>
+          <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+            Get your LinkedIn profile roasted by AI, then receive actionable feedback to
+            level up. No BS, just results.
+          </p>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+
+        {/* Main Content */}
+        <div className="grid md:grid-cols-2 gap-6 mb-6">
+          {/* Left: Upload/Paste */}
+          <Card className="p-6">
+            <h2 className="text-xl font-semibold mb-4">Step 1: Your Profile</h2>
+            {mode === 'upload' ? (
+              <FileDrop
+                onFileSelect={setFile}
+                onSwitchToPaste={() => setMode('paste')}
+              />
+            ) : (
+              <PasteArea
+                value={pastedText}
+                onChange={setPastedText}
+                onSwitchToFile={() => setMode('upload')}
+              />
+            )}
+          </Card>
+
+          {/* Right: Persona + Heat */}
+          <Card className="p-6">
+            <h2 className="text-xl font-semibold mb-4">Step 2: Choose Your Pain</h2>
+            <div className="space-y-6">
+              <PersonaPicker value={persona} onChange={setPersona} />
+              <HeatPicker value={heat} onChange={setHeat} />
+            </div>
+          </Card>
+        </div>
+
+        {/* Error Alert */}
+        {error && (
+          <Alert variant="destructive" className="mb-6">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
+        {/* Action Buttons */}
+        <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+          <Button
+            onClick={() => handleSubmit()}
+            disabled={!canSubmit || isLoading}
+            size="lg"
+            className="w-full sm:w-auto min-w-[200px]"
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                Roasting...
+              </>
+            ) : (
+              <>
+                <Flame className="mr-2 h-5 w-5" />
+                Roast Me
+              </>
+            )}
+          </Button>
+
+          <Button
+            onClick={handleTrySample}
+            variant="outline"
+            size="lg"
+            disabled={isLoading}
+            className="w-full sm:w-auto"
+          >
+            Try Sample Profile
+          </Button>
+        </div>
+
+        {/* Footer */}
+        <div className="mt-12 text-center text-sm text-gray-500">
+          <p>Free forever. Powered by AI. Roasts are humor-only, never harassment.</p>
+        </div>
+      </div>
     </div>
   );
 }
