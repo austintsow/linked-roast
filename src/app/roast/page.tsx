@@ -35,6 +35,7 @@ export default function RoastPage() {
   const [error, setError] = useState('');
   const [linkedInProfile, setLinkedInProfile] = useState<string>('');
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
+  const [messages, setMessages] = useState<Array<{ sender: 'user' | 'roaster'; text: string }>>([]);
 
   // Fetch LinkedIn profile on component mount
   useEffect(() => {
@@ -95,8 +96,8 @@ export default function RoastPage() {
         throw new Error('Please provide at least 50 characters of profile text');
       }
 
-      // Call roast API
-      const roastRes = await fetch('/api/roast', {
+      // Call chat roast API
+      const roastRes = await fetch('/api/roast-chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ rawText, persona, heat }),
@@ -109,19 +110,8 @@ export default function RoastPage() {
 
       const roastData = await roastRes.json();
 
-      // Navigate to results with state
-      const state = {
-        roast_lines: roastData.roast_lines,
-        score: roastData.score,
-        tags: roastData.tags,
-        archetype: roastData.archetype,
-        rawText,
-        persona,
-        heat,
-      };
-
-      sessionStorage.setItem('roastResult', JSON.stringify(state));
-      router.push('/result');
+      // Set messages in state for display
+      setMessages(roastData.messages || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
@@ -133,65 +123,91 @@ export default function RoastPage() {
   const canSubmit = linkedInProfile.length >= 50 || pastedText.length >= 50 || file !== null;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4 md:p-8">
-      <div className="max-w-6xl mx-auto">
+    <div className="min-h-screen bg-white flex">
+      {/* Left Side - Chat Interface */}
+      <div className="flex-1 flex flex-col border-r border-gray-200">
         {/* Header */}
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center gap-3 mb-4">
-            <Flame className="h-12 w-12 text-orange-500" />
-            <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-orange-500 to-pink-500 text-transparent bg-clip-text">
+        <div className="p-4 border-b border-gray-200 bg-white">
+          <div className="flex items-center gap-2">
+            <Flame className="h-6 w-6 text-orange-500" />
+            <h1 className="text-xl font-bold bg-gradient-to-r from-orange-500 to-pink-500 text-transparent bg-clip-text">
               linkedRoast
             </h1>
           </div>
-          <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-            Get your LinkedIn profile roasted by AI, then receive actionable feedback to
-            level up. No BS, just results.
-          </p>
         </div>
 
-        {/* LinkedIn Profile Status */}
-        {isLoadingProfile ? (
-          <div className="max-w-md mx-auto mb-6">
-            <Alert>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              <AlertDescription>Loading your LinkedIn profile...</AlertDescription>
-            </Alert>
-          </div>
-        ) : linkedInProfile ? (
-          <div className="max-w-md mx-auto mb-6">
-            <Alert className="bg-green-50 border-green-200">
-              <AlertDescription className="text-green-800">
-                ✓ LinkedIn profile connected and ready to roast!
-              </AlertDescription>
-            </Alert>
-          </div>
-        ) : null}
-
-        {/* Main Content */}
-        <div className="max-w-md mx-auto">
-          <Card className="p-6">
-            <h2 className="text-xl font-semibold mb-4 text-center">Customize Your Roast</h2>
-            <div className="space-y-6">
-              <PersonaPicker value={persona} onChange={setPersona} />
-              <HeatPicker value={heat} onChange={setHeat} />
+        {/* Messages Area */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50">
+          {isLoadingProfile ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
             </div>
-          </Card>
+          ) : !linkedInProfile ? (
+            <div className="text-center py-8 text-gray-400">
+              <p>No LinkedIn profile connected</p>
+            </div>
+          ) : messages.length === 0 ? (
+            <>
+              {/* Initial prompt */}
+              <div className="flex justify-end">
+                <div className="bg-blue-500 text-white rounded-2xl rounded-tr-sm px-4 py-2 max-w-[70%]">
+                  <p className="text-sm">yo check out my linkedin profile 🔥</p>
+                </div>
+              </div>
+              
+              {/* Loading state */}
+              {isLoading && (
+                <div className="flex justify-start">
+                  <div className="bg-gray-200 rounded-2xl rounded-tl-sm px-4 py-3 max-w-[70%]">
+                    <Loader2 className="h-4 w-4 animate-spin text-gray-600" />
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              {/* Display conversation messages */}
+              {messages.map((msg, idx) => (
+                <div key={idx} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div
+                    className={`rounded-2xl px-4 py-2 max-w-[70%] ${
+                      msg.sender === 'user'
+                        ? 'bg-blue-500 text-white rounded-tr-sm'
+                        : 'bg-gray-200 text-gray-900 rounded-tl-sm'
+                    }`}
+                  >
+                    <p className="text-sm whitespace-pre-wrap">{msg.text}</p>
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Right Side - Roast Options */}
+      <div className="w-96 p-6 bg-white flex flex-col">
+        <h2 className="text-2xl font-bold mb-6">Customize Your Roast</h2>
+        
+        <div className="space-y-6 flex-1">
+          <PersonaPicker value={persona} onChange={setPersona} />
+          <HeatPicker value={heat} onChange={setHeat} />
         </div>
 
         {/* Error Alert */}
         {error && (
-          <Alert variant="destructive" className="mb-6">
+          <Alert variant="destructive" className="mb-4">
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
 
         {/* Action Buttons */}
-        <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+        <div className="space-y-3">
           <Button
             onClick={() => handleSubmit()}
             disabled={!canSubmit || isLoading}
             size="lg"
-            className="w-full sm:w-auto min-w-[200px]"
+            className="w-full"
           >
             {isLoading ? (
               <>
@@ -201,7 +217,7 @@ export default function RoastPage() {
             ) : (
               <>
                 <Flame className="mr-2 h-5 w-5" />
-                Roast Me
+                Roast My Profile
               </>
             )}
           </Button>
@@ -211,15 +227,14 @@ export default function RoastPage() {
             variant="outline"
             size="lg"
             disabled={isLoading}
-            className="w-full sm:w-auto"
+            className="w-full"
           >
             Try Sample Profile
           </Button>
         </div>
 
-        {/* Footer */}
-        <div className="mt-12 text-center text-sm text-gray-500">
-          <p>Free forever. Powered by AI. Roasts are humor-only, never harassment.</p>
+        <div className="mt-6 text-center text-xs text-gray-500">
+          <p>Powered by AI. Gen Z humor only 💀</p>
         </div>
       </div>
     </div>
